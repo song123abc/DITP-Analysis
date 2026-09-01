@@ -353,6 +353,7 @@ def _show_upload_page() -> None:
     st.title("DITP-Analysis")
     st.write("SPM 轨迹聚类与平台长度分析")
     st.info("数据仅在本次应用会话中处理，请勿上传不具备公开处理权限的敏感数据。")
+    st.caption("推荐优先上传 ZIP 压缩文件。文件较大时，上传速度可能较慢，请耐心等待。")
     upload = st.file_uploader("上传无表头 CSV、Excel 或压缩文件（相邻两列为一条轨迹的 x、y）", type=["csv", "xlsx", "xls", "gz", "zip"])
     if upload is not None and st.button("开始分析", type="primary"):
         progress = st.progress(0, text="正在读取上传文件…")
