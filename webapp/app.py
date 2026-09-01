@@ -49,6 +49,13 @@ st.markdown(
     .ditp-cluster-1 { background: #FFF4E5; border-left-color: #B45309; }
     .ditp-cluster-2 { background: #E8F5F2; border-left-color: #0F766E; }
     .ditp-cluster-3 { background: #EAF1FF; border-left-color: #2563EB; }
+    .ditp-sidebar-brand {
+        color: #0F172A;
+        font-size: 1.45rem;
+        font-weight: 800;
+        line-height: 1.2;
+        margin: 0.15rem 0 0.8rem 0;
+    }
     [data-testid="stSidebar"] {
         background: #F8FAFC;
         border-right: 1px solid #E2E8F0;
@@ -198,7 +205,6 @@ def _cached_trace_length_csv(result: AnalysisResult) -> bytes:
 
 def _show_overview(result: AnalysisResult, max_display: int) -> None:
     boundary = result.boundary
-    st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("AllTrace 总体概览")
     overall_traces, overall_heatmap = st.columns(2)
     with overall_traces:
@@ -249,7 +255,6 @@ def _show_overview(result: AnalysisResult, max_display: int) -> None:
     )
 
 def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
-    st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("Cluster 统计")
     cluster_id = st.selectbox(
         "选择 Cluster",
@@ -275,6 +280,8 @@ def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
         stat_cols[1].metric("轨迹数量", f"{stats['count']:,}")
     left, right = st.columns(2)
     with left:
+        plotted_count = min(int(max_display), int(stats["count"]))
+        st.caption(f"轨迹曲线：实际绘制 {plotted_count:,} / {int(stats['count']):,} 条")
         st.plotly_chart(_cached_cluster_traces_figure(result, cluster_id, max_display), width="stretch")
     with right:
         st.plotly_chart(_cached_cluster_heatmap_figure(result, cluster_id), width="stretch")
@@ -289,7 +296,6 @@ def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
 
 
 def _show_length_stats(result: AnalysisResult) -> None:
-    st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("平台长度统计")
     st.dataframe(
         _length_rows(result).style.format({"接受率": "{:.1%}"}),
@@ -297,8 +303,10 @@ def _show_length_stats(result: AnalysisResult) -> None:
         width="stretch",
     )
     st.markdown("#### 各 Cluster 平台长度分布")
-    for cluster_id in range(3):
-        st.plotly_chart(_cached_length_histogram_figure(result, cluster_id), width="stretch")
+    length_columns = st.columns(3)
+    for cluster_id, column in enumerate(length_columns):
+        with column:
+            st.plotly_chart(_cached_length_histogram_figure(result, cluster_id), width="stretch")
 
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("下载结果")
@@ -308,7 +316,7 @@ def _show_length_stats(result: AnalysisResult) -> None:
 
 
 def _show_results(result: AnalysisResult) -> None:
-    st.sidebar.markdown("### DITP-Analysis")
+    st.sidebar.markdown('<div class="ditp-sidebar-brand">DITP-Analysis</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"当前文件：{st.session_state.get('filename', '未命名')}")
     st.sidebar.markdown("#### 分析导航")
     section = st.sidebar.radio(
@@ -347,16 +355,22 @@ def _show_upload_page() -> None:
     st.info("数据仅在本次应用会话中处理，请勿上传不具备公开处理权限的敏感数据。")
     upload = st.file_uploader("上传无表头 CSV、Excel 或压缩文件（相邻两列为一条轨迹的 x、y）", type=["csv", "xlsx", "xls", "gz", "zip"])
     if upload is not None and st.button("开始分析", type="primary"):
-        with st.spinner("正在解析、识别 AllTrace 边界并完成聚类和平台长度计算…"):
-            try:
-                st.session_state.analysis = analyze_bytes(upload.getvalue(), upload.name)
-                st.session_state.filename = upload.name
-                st.session_state.pop("analysis_section", None)
-                st.session_state.pop("max_display", None)
-                st.rerun()
-            except Exception as exc:
-                st.error(f"分析失败：{exc}")
-                st.session_state.pop("analysis", None)
+        progress = st.progress(0, text="正在读取上传文件…")
+        try:
+            data = upload.getvalue()
+            progress.progress(15, text="文件读取完成，正在解析轨迹…")
+            result = analyze_bytes(data, upload.name)
+            progress.progress(85, text="轨迹解析完成，正在整理分析结果…")
+            st.session_state.analysis = result
+            st.session_state.filename = upload.name
+            st.session_state.pop("analysis_section", None)
+            st.session_state.pop("max_display", None)
+            progress.progress(100, text="分析完成")
+            st.rerun()
+        except Exception as exc:
+            progress.empty()
+            st.error(f"分析失败：{exc}")
+            st.session_state.pop("analysis", None)
 
     st.markdown("上传数据后点击“开始分析”。")
 
