@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.analysis_service import AnalysisResult, analyze_traces, calculate_lengths, parse_traces
+from src.analysis_service import AnalysisResult, analyze_bytes, calculate_lengths
 from webapp.plots import (
     alltrace_figure,
     alltrace_heatmap_figure,
@@ -103,13 +103,13 @@ def _cluster_csv(result: AnalysisResult) -> bytes:
     return frame.to_csv(index=False).encode("utf-8")
 
 
-def _show_results(result: AnalysisResult, max_display: int) -> None:
+def _show_overview(result: AnalysisResult, max_display: int) -> None:
     boundary = result.boundary
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("AllTrace 总体概览")
     overall_traces, overall_heatmap = st.columns(2)
     with overall_traces:
-        st.plotly_chart(alltrace_traces_figure(result, max_traces=min(500, max_display * 2)), width="stretch")
+        st.plotly_chart(alltrace_traces_figure(result, max_traces=max_display), width="stretch")
     with overall_heatmap:
         st.plotly_chart(alltrace_heatmap_figure(result), width="stretch")
 
@@ -155,52 +155,61 @@ def _show_results(result: AnalysisResult, max_display: int) -> None:
         height=145,
     )
 
+def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
-    st.subheader("各 Cluster 详细结果")
-    for cluster_id in range(3):
-        stats = result.cluster_stats[cluster_id]
-        st.markdown(
-            f'<div class="ditp-cluster-heading ditp-cluster-{cluster_id + 1}">'
-            f'Cluster {cluster_id + 1} · {stats["count"]:,} 条轨迹</div>',
-            unsafe_allow_html=True,
-        )
-        with st.expander("展开该 Cluster 的详细图表", expanded=True):
-            conductance_column, stats_column = st.columns([1.65, 1.0])
-            with conductance_column:
-                st.plotly_chart(cluster_conductance_figure(result, cluster_id), width="stretch")
-            with stats_column:
-                st.markdown("#### 电导峰统计")
-                stat_cols = st.columns(2)
-                stat_cols[0].metric("峰均值", f"{stats['peak_mean']:.3f}")
-                stat_cols[1].metric("峰标准差", f"{stats['peak_std']:.3f}")
-                stat_cols[0].metric("轨迹占比", f"{stats['fraction']:.1%}")
-                stat_cols[1].metric("轨迹数量", f"{stats['count']:,}")
-            left, right = st.columns(2)
-            with left:
-                st.plotly_chart(cluster_traces_figure(result, cluster_id, max_traces=max_display), width="stretch")
-            with right:
-                st.plotly_chart(cluster_heatmap_figure(result, cluster_id), width="stretch")
+    st.subheader("Cluster 统计")
+    cluster_id = st.selectbox(
+        "选择 Cluster",
+        options=list(range(3)),
+        format_func=lambda value: f"Cluster {value + 1}",
+        key="cluster_stats_selector",
+    )
+    stats = result.cluster_stats[cluster_id]
+    st.markdown(
+        f'<div class="ditp-cluster-heading ditp-cluster-{cluster_id + 1}">'
+        f'Cluster {cluster_id + 1} · {stats["count"]:,} 条轨迹</div>',
+        unsafe_allow_html=True,
+    )
+    conductance_column, stats_column = st.columns([1.65, 1.0])
+    with conductance_column:
+        st.plotly_chart(cluster_conductance_figure(result, cluster_id), width="stretch")
+    with stats_column:
+        st.markdown("#### 电导峰统计")
+        stat_cols = st.columns(2)
+        stat_cols[0].metric("峰均值", f"{stats['peak_mean']:.3f}")
+        stat_cols[1].metric("峰标准差", f"{stats['peak_std']:.3f}")
+        stat_cols[0].metric("轨迹占比", f"{stats['fraction']:.1%}")
+        stat_cols[1].metric("轨迹数量", f"{stats['count']:,}")
+    left, right = st.columns(2)
+    with left:
+        st.plotly_chart(cluster_traces_figure(result, cluster_id, max_traces=max_display), width="stretch")
+    with right:
+        st.plotly_chart(cluster_heatmap_figure(result, cluster_id), width="stretch")
+    representative = representative_figure(result, cluster_id)
+    representative_heatmap = representative_heatmap_figure(result, cluster_id)
+    if representative is not None and representative_heatmap is not None:
+        demo_left, demo_right = st.columns(2)
+        with demo_left:
+            st.plotly_chart(representative, width="stretch")
+        with demo_right:
+            st.plotly_chart(representative_heatmap, width="stretch")
 
-            representative = representative_figure(result, cluster_id)
-            representative_heatmap = representative_heatmap_figure(result, cluster_id)
-            if representative is not None and representative_heatmap is not None:
-                demo_left, demo_right = st.columns(2)
-                with demo_left:
-                    st.plotly_chart(representative, width="stretch")
-                with demo_right:
-                    st.plotly_chart(representative_heatmap, width="stretch")
 
+def _show_length_stats(result: AnalysisResult) -> None:
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
-    st.subheader("平台长度分析")
+    st.subheader("平台长度统计")
     st.dataframe(
         _length_rows(result).style.format({"接受率": "{:.1%}"}),
         hide_index=True,
         width="stretch",
     )
-    length_columns = st.columns(3)
-    for cluster_id, column in enumerate(length_columns):
-        with column:
-            st.plotly_chart(length_histogram_figure(result, cluster_id), width="stretch")
+    cluster_id = st.selectbox(
+        "选择 Cluster 查看长度分布",
+        options=list(range(3)),
+        format_func=lambda value: f"Cluster {value + 1}",
+        key="length_stats_selector",
+    )
+    st.plotly_chart(length_histogram_figure(result, cluster_id), width="stretch")
 
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("下载结果")
@@ -209,43 +218,30 @@ def _show_results(result: AnalysisResult, max_display: int) -> None:
     download_cols[1].download_button("下载平台长度 CSV", _trace_length_csv(result), "trace_lengths.csv", "text/csv")
 
 
+def _show_results(result: AnalysisResult, max_display: int) -> None:
+    st.sidebar.subheader("分析模块")
+    section = st.sidebar.radio(
+        "选择要查看的内容",
+        ["总体聚类概览", "Cluster 统计", "平台长度统计"],
+        key="analysis_section",
+    )
+    if section == "总体聚类概览":
+        _show_overview(result, max_display)
+    elif section == "Cluster 统计":
+        _show_cluster_stats(result, max_display)
+    else:
+        _show_length_stats(result)
+
+
 def main() -> None:
     st.title("DITP-Analysis")
     st.write("SPM 轨迹聚类与平台长度分析")
     st.info("数据仅在本次应用会话中处理，请勿上传不具备公开处理权限的敏感数据。")
     upload = st.file_uploader("上传无表头 CSV、Excel 或压缩文件（相邻两列为一条轨迹的 x、y）", type=["csv", "xlsx", "xls", "gz", "zip"])
-    max_display = 1
-    if upload is not None:
-        upload_key = f"{upload.name}:{upload.size}"
-        if st.session_state.get("upload_key") != upload_key:
-            try:
-                parsed_traces, parsed_ids = parse_traces(upload.getvalue(), upload.name)
-                st.session_state.uploaded_traces = parsed_traces
-                st.session_state.uploaded_ids = parsed_ids
-                st.session_state.upload_key = upload_key
-                st.session_state.pop("analysis", None)
-            except Exception as exc:
-                st.error(f"文件解析失败：{exc}")
-                st.session_state.pop("uploaded_traces", None)
-                st.session_state.pop("uploaded_ids", None)
-
-        trace_count = len(st.session_state.get("uploaded_traces", []))
-        if trace_count:
-            max_display = st.slider(
-                f"每个 Cluster 最多展示的轨迹数（文件共 {trace_count:,} 条）",
-                min_value=1,
-                max_value=trace_count,
-                value=min(200, trace_count),
-                step=1,
-            )
-
-    if upload is not None and st.session_state.get("uploaded_traces") and st.button("开始分析", type="primary"):
+    if upload is not None and st.button("开始分析", type="primary"):
         with st.spinner("正在解析、识别 AllTrace 边界并完成聚类和平台长度计算…"):
             try:
-                st.session_state.analysis = analyze_traces(
-                    st.session_state.uploaded_traces,
-                    st.session_state.uploaded_ids,
-                )
+                st.session_state.analysis = analyze_bytes(upload.getvalue(), upload.name)
                 st.session_state.filename = upload.name
             except Exception as exc:
                 st.error(f"分析失败：{exc}")
@@ -253,6 +249,13 @@ def main() -> None:
 
     result = st.session_state.get("analysis")
     if result is not None:
+        max_display = st.slider(
+            f"每个 Cluster 最多展示的轨迹数（文件共 {len(result.traces):,} 条）",
+            min_value=1,
+            max_value=len(result.traces),
+            value=min(200, len(result.traces)),
+            step=1,
+        )
         _show_results(result, max_display)
     else:
         st.markdown("上传数据后点击“开始分析”。")
