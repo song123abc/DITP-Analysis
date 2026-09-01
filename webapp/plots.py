@@ -14,7 +14,7 @@ from src.analysis_service import AnalysisResult, Trace
 
 COLORS = ["#B45309", "#0F766E", "#2563EB"]
 HEATMAP_COLORS = [
-    [0.00, "#F3F4F6"],
+    [0.00, "#FFFFFF"],
     [0.08, "#C7DCE8"],
     [0.38, "#6FA3B8"],
     [0.68, "#F0B35F"],
@@ -202,10 +202,10 @@ def representative_heatmap_figure(result: AnalysisResult, cluster_id: int) -> Op
         colorscale=HEATMAP_COLORS,
         zmin=0.0,
         zmax=float(np.max(feature)) if np.any(feature) else 1.0,
-        colorbar={"title": "sqrt(L1)"},
+        colorbar={},
     ))
     fig.update_layout(
-        title=f"代表轨迹 ROI 特征图（L1 + sqrt，ID {item['trace_id']}）",
+        title=f"代表轨迹 ROI 特征图（ID {item['trace_id']}）",
         xaxis_title="位移 (nm)",
         yaxis_title="log10(G/G0)",
         height=470,
@@ -224,27 +224,18 @@ def _projection(traces: Sequence[Trace]) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _log_count_heatmap(hist: np.ndarray, x_edges: np.ndarray, y_edges: np.ndarray, title: str) -> go.Figure:
-    """Create a full-range heatmap while labeling colors with raw counts."""
-    log_hist = np.log1p(hist)
+    """Create a full-range heatmap using raw counts on a white background."""
     max_count = float(np.max(hist))
-    count_ticks = [value for value in (0, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000, 50000) if value <= max_count]
-    if max_count > 0 and (not count_ticks or count_ticks[-1] < max_count):
-        count_ticks.append(int(max_count))
-    colorbar = {
-        "title": "计数",
-        "tickvals": [float(np.log1p(value)) for value in count_ticks],
-        "ticktext": [str(value) for value in count_ticks],
-    }
     fig = go.Figure(go.Heatmap(
         x=(x_edges[:-1] + x_edges[1:]) / 2,
         y=(y_edges[:-1] + y_edges[1:]) / 2,
-        z=log_hist.T,
+        z=hist.T,
         colorscale=HEATMAP_COLORS,
         zmin=0.0,
-        zmax=float(np.log1p(max_count)) if max_count > 0 else 1.0,
-        colorbar=colorbar,
+        zmax=max_count if max_count > 0 else 1.0,
+        colorbar={},
     ))
-    fig.update_layout(title=f"{title}（log1p 计数）", xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
+    fig.update_layout(title=title, xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
     return fig
 
 

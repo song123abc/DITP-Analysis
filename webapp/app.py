@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.analysis_service import AnalysisResult, analyze_bytes, calculate_lengths
+from src.analysis_service import AnalysisResult, analyze_traces, calculate_lengths, parse_traces
 from webapp.plots import (
     alltrace_figure,
     alltrace_heatmap_figure,
@@ -69,6 +69,7 @@ def _length_rows(result: AnalysisResult) -> pd.DataFrame:
                 "有效轨迹": int(values.size),
                 "拒绝轨迹": int(rejected),
                 "接受率": float(values.size / (values.size + rejected)) if values.size + rejected else 0.0,
+                "拒绝原因": "；".join(f"{key}: {value}" for key, value in result.rejection_counts[cluster_id].items()) or "无",
             }
         )
     return pd.DataFrame(rows)
@@ -191,14 +192,15 @@ def _show_results(result: AnalysisResult, max_display: int) -> None:
 
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("平台长度分析")
-    st.dataframe(_length_rows(result).style.format({"接受率": "{:.1%}"}), hide_index=True, width="stretch")
+    st.dataframe(
+        _length_rows(result).style.format({"接受率": "{:.1%}"}),
+        hide_index=True,
+        width="stretch",
+    )
     length_columns = st.columns(3)
     for cluster_id, column in enumerate(length_columns):
         with column:
             st.plotly_chart(length_histogram_figure(result, cluster_id), width="stretch")
-            reasons = result.rejection_counts[cluster_id]
-            if reasons:
-                st.caption("拒绝原因：" + "；".join(f"{key} {value}" for key, value in reasons.items()))
 
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("下载结果")
@@ -210,14 +212,40 @@ def _show_results(result: AnalysisResult, max_display: int) -> None:
 def main() -> None:
     st.title("DITP-Analysis")
     st.write("SPM 轨迹聚类与平台长度分析")
-    st.info("数据仅在本次应用会话中处理，不写入项目 outputs 目录。请勿上传不具备公开处理权限的敏感数据。")
+    st.info("数据仅在本次应用会话中处理，请勿上传不具备公开处理权限的敏感数据。")
     upload = st.file_uploader("上传无表头 CSV、Excel 或压缩文件（相邻两列为一条轨迹的 x、y）", type=["csv", "xlsx", "xls", "gz", "zip"])
-    max_display = st.slider("每个 Cluster 最多展示的轨迹数", min_value=20, max_value=500, value=200, step=20)
+    max_display = 1
+    if upload is not None:
+        upload_key = f"{upload.name}:{upload.size}"
+        if st.session_state.get("upload_key") != upload_key:
+            try:
+                parsed_traces, parsed_ids = parse_traces(upload.getvalue(), upload.name)
+                st.session_state.uploaded_traces = parsed_traces
+                st.session_state.uploaded_ids = parsed_ids
+                st.session_state.upload_key = upload_key
+                st.session_state.pop("analysis", None)
+            except Exception as exc:
+                st.error(f"文件解析失败：{exc}")
+                st.session_state.pop("uploaded_traces", None)
+                st.session_state.pop("uploaded_ids", None)
 
-    if upload is not None and st.button("开始分析", type="primary"):
+        trace_count = len(st.session_state.get("uploaded_traces", []))
+        if trace_count:
+            max_display = st.slider(
+                f"每个 Cluster 最多展示的轨迹数（文件共 {trace_count:,} 条）",
+                min_value=1,
+                max_value=trace_count,
+                value=min(200, trace_count),
+                step=1,
+            )
+
+    if upload is not None and st.session_state.get("uploaded_traces") and st.button("开始分析", type="primary"):
         with st.spinner("正在解析、识别 AllTrace 边界并完成聚类和平台长度计算…"):
             try:
-                st.session_state.analysis = analyze_bytes(upload.getvalue(), upload.name)
+                st.session_state.analysis = analyze_traces(
+                    st.session_state.uploaded_traces,
+                    st.session_state.uploaded_ids,
+                )
                 st.session_state.filename = upload.name
             except Exception as exc:
                 st.error(f"分析失败：{exc}")
@@ -225,7 +253,6 @@ def main() -> None:
 
     result = st.session_state.get("analysis")
     if result is not None:
-        st.caption(f"当前文件：{st.session_state.get('filename', 'uploaded file')} · 特征：28×28 L1+sqrt · KMeans++ K=3")
         _show_results(result, max_display)
     else:
         st.markdown("上传数据后点击“开始分析”。")
