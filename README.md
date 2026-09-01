@@ -1,40 +1,68 @@
 # DITP-Analysis
 
-独立的 SPM 轨迹聚类与平台长度分析网页服务。用户上传无表头 CSV、XLSX、XLS、CSV.GZ 或 ZIP
-文件后，一次完成 AllTrace 平台-噪音边界识别、KMeans++ 聚类和平台长度统计。
+DITP-Analysis 是一个面向 SPM 轨迹数据的网页分析工具。用户上传数据后，可以在
+一次分析中完成 AllTrace 平台-噪音边界识别、三类轨迹聚类和平台长度统计，并在
+浏览器中查看交互图表和下载结果。
 
-## 当前方法
+## 在线演示
 
-- 聚类 ROI：`x = 0..2 nm`，`log10(G/G0) = -5..-2`。
-- 每条轨迹转换为 `28 x 28` 二维直方图，L1 归一化后逐元素开平方。
-- KMeans++：`K=3`、`n_init=10`、随机种子 `42`；不使用 PCA。
-- Cluster 标签按平均电导从高到低重排为 Cluster 1、2、3。
-- AllTrace 一维电导投影自动找到低电导背景峰、平台峰及两者之间的低谷。
-- 平台起点为首次进入不高于 `0.1 G0` 的位置；终点为起点后边界窗口内的最右侧点。
-- 两侧各裁掉 10 个点，使用 OLS 拟合，`|slope| < 8` 才接受。
-- 长度为裁剪区间的 `x_end - x_start`，不做 snapback 修正。
+- 在线演示：[DITP-Analysis](https://ditp-analysis.streamlit.app/)
+- 源代码：[github.com/song123abc/DITP-Analysis](https://github.com/song123abc/DITP-Analysis)
 
-ZIP 压缩包必须只包含一个 CSV、XLSX 或 XLS 数据文件；GZIP 压缩文件必须是
-`CSV.GZ`。压缩文件只在内存中解压，不写入长期存储。对于较大的 CSV，优先使用
-`CSV.GZ` 上传以减少网络传输量。
+## 主要功能
+
+- 支持无表头 CSV、XLSX、XLS、CSV.GZ 和单文件 ZIP 数据；
+- 自动识别 AllTrace 平台-噪音边界，也允许手动调整后重算平台长度；
+- 使用 L1 归一化二维直方图平方根特征和 KMeans++ 完成三类聚类；
+- 展示 AllTrace、Cluster、代表轨迹和平台长度等交互结果；
+- 提供聚类结果和平台长度 CSV 下载；
+- 不长期保存用户上传的数据和分析结果。
+
+输入数据应由交替排列的 `x/y` 列组成，每两列表示一条轨迹。ZIP 压缩包只能包含
+一个 CSV、XLSX 或 XLS 文件；CSV.GZ 和 ZIP 只在内存中解压。
 
 ## 本地运行
 
+需要 Python 3.11 或兼容版本。
+
 ```bash
+git clone https://github.com/song123abc/DITP-Analysis.git
+cd DITP-Analysis
+
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run webapp/app.py
+python -m streamlit run webapp/app.py
 ```
 
-浏览器打开 Streamlit 输出的本地地址即可。
+Windows 激活虚拟环境使用：
 
-## 部署到 Streamlit Community Cloud
+```powershell
+.venv\Scripts\activate
+```
 
-1. 将本目录作为 GitHub 仓库 `DITP-Analysis` 推送。
-2. 登录 [Streamlit Community Cloud](https://share.streamlit.io/)。
-3. 选择 GitHub 仓库、分支和文件 `webapp/app.py`。
-4. Python 版本由 `runtime.txt` 指定，依赖由 `requirements.txt` 安装。
+启动后，在浏览器中打开终端显示的本地地址，通常为
+`http://localhost:8501`。
 
-应用仅在当前进程内处理上传数据，不写入长期 `outputs/` 目录。网页只生成 Plotly
-图表和可下载的 CSV，不生成论文 PNG/PDF。
+## 部署
+
+本项目可以直接部署到
+[Streamlit Community Cloud](https://share.streamlit.io/)：
+
+1. 登录 Streamlit Community Cloud 并连接 GitHub；
+2. 选择仓库 `song123abc/DITP-Analysis`；
+3. 选择分支 `main`；
+4. 将入口文件设置为 `webapp/app.py`；
+5. 点击 Deploy，等待依赖安装和服务启动。
+
+后续推送到 GitHub `main` 分支的更新会由 Streamlit Cloud 自动重新部署。
+
+## 数据与隐私
+
+应用在当前会话中处理上传文件，不创建长期 `outputs/` 目录，也不生成论文
+PNG/PDF。部署者仍应根据数据来源和所在机构的要求配置访问权限，并提醒用户不要
+上传无权交由第三方云服务处理的敏感数据。
+
+## License
+
+本项目使用 [MIT License](LICENSE)。
