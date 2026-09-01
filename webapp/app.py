@@ -121,8 +121,16 @@ def _trace_length_csv(result: AnalysisResult) -> bytes:
     rows = []
     for cluster_id, items in result.lengths.items():
         for item in items:
-            rows.append({"trace_id": item["trace_id"], "cluster_id": cluster_id + 1, **item})
-    return pd.DataFrame(rows).to_csv(index=False).encode("utf-8")
+            rows.append(
+                {
+                    "trace_id": item["trace_id"],
+                    "cluster": cluster_id + 1,
+                    "length_nm": item["length_nm"],
+                    "slope": item["slope"],
+                }
+            )
+    frame = pd.DataFrame(rows, columns=["trace_id", "cluster", "length_nm", "slope"])
+    return frame.to_csv(index=False).encode("utf-8")
 
 
 def _cluster_csv(result: AnalysisResult) -> bytes:
