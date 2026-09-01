@@ -111,7 +111,9 @@ def cluster_conductance_figure(result: AnalysisResult, cluster_id: int) -> go.Fi
         fit_y = amplitude * np.exp(-0.5 * ((fit_x - mu) / sigma) ** 2)
         fig.add_trace(go.Scatter(x=fit_x, y=fit_y, mode="lines", name="高斯拟合", line={"color": "#111827", "width": 2.0}))
     if np.isfinite(mu):
-        fig.add_vline(x=mu, line_dash="dot", line_color=COLORS[cluster_id], annotation_text=f"峰 {mu:.3f}")
+        # Keep the peak marker unobtrusive; the exact fitted value is shown in
+        # the statistics panel beside the chart.
+        fig.add_vline(x=mu, line_dash="dot", line_color=COLORS[cluster_id])
     fig.update_layout(title=f"Cluster {cluster_id + 1} 一维电导分布与高斯拟合", xaxis_title="log10(G/G0)", yaxis_title="计数", height=350, template="plotly_white", legend={"orientation": "h", "y": 1.08, "x": 0.01})
     return fig
 

@@ -49,6 +49,33 @@ st.markdown(
     .ditp-cluster-1 { background: #FFF4E5; border-left-color: #B45309; }
     .ditp-cluster-2 { background: #E8F5F2; border-left-color: #0F766E; }
     .ditp-cluster-3 { background: #EAF1FF; border-left-color: #2563EB; }
+    [data-testid="stSidebar"] {
+        background: #F8FAFC;
+        border-right: 1px solid #E2E8F0;
+    }
+    [data-testid="stSidebar"] h3 {
+        color: #0F172A;
+        margin-bottom: 0.25rem;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] {
+        gap: 0.35rem;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 0.45rem 0.55rem;
+        transition: background 120ms ease, border-color 120ms ease;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
+        background: #E2E8F0;
+        border-color: #CBD5E1;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+        background: #E0F2F1;
+        border-color: #5EEAD4;
+        color: #115E59;
+        font-weight: 650;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -103,20 +130,78 @@ def _cluster_csv(result: AnalysisResult) -> bytes:
     return frame.to_csv(index=False).encode("utf-8")
 
 
+# Plotly figures are rebuilt on every Streamlit rerun unless their inputs are
+# cached. The result object is session-scoped, so its identity is a stable and
+# safe cache key while the user switches navigation items or selectors.
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_alltrace_figure(result: AnalysisResult):
+    return alltrace_figure(result)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_alltrace_heatmap_figure(result: AnalysisResult):
+    return alltrace_heatmap_figure(result)
+
+
+@st.cache_data(show_spinner=False, max_entries=32, hash_funcs={AnalysisResult: id})
+def _cached_alltrace_traces_figure(result: AnalysisResult, max_traces: int):
+    return alltrace_traces_figure(result, max_traces=max_traces)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_cluster_conductance_figure(result: AnalysisResult, cluster_id: int):
+    return cluster_conductance_figure(result, cluster_id)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_cluster_heatmap_figure(result: AnalysisResult, cluster_id: int):
+    return cluster_heatmap_figure(result, cluster_id)
+
+
+@st.cache_data(show_spinner=False, max_entries=32, hash_funcs={AnalysisResult: id})
+def _cached_cluster_traces_figure(result: AnalysisResult, cluster_id: int, max_traces: int):
+    return cluster_traces_figure(result, cluster_id, max_traces=max_traces)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_length_histogram_figure(result: AnalysisResult, cluster_id: int):
+    return length_histogram_figure(result, cluster_id)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_representative_figure(result: AnalysisResult, cluster_id: int):
+    return representative_figure(result, cluster_id)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_representative_heatmap_figure(result: AnalysisResult, cluster_id: int):
+    return representative_heatmap_figure(result, cluster_id)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_cluster_csv(result: AnalysisResult) -> bytes:
+    return _cluster_csv(result)
+
+
+@st.cache_data(show_spinner=False, hash_funcs={AnalysisResult: id})
+def _cached_trace_length_csv(result: AnalysisResult) -> bytes:
+    return _trace_length_csv(result)
+
+
 def _show_overview(result: AnalysisResult, max_display: int) -> None:
     boundary = result.boundary
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("AllTrace 总体概览")
     overall_traces, overall_heatmap = st.columns(2)
     with overall_traces:
-        st.plotly_chart(alltrace_traces_figure(result, max_traces=max_display), width="stretch")
+        st.plotly_chart(_cached_alltrace_traces_figure(result, max_display), width="stretch")
     with overall_heatmap:
-        st.plotly_chart(alltrace_heatmap_figure(result), width="stretch")
+        st.plotly_chart(_cached_alltrace_heatmap_figure(result), width="stretch")
 
     st.markdown("#### AllTrace 一维电导与平台-噪音边界")
     conductance_column, boundary_column = st.columns([1.7, 1.0])
     with conductance_column:
-        st.plotly_chart(alltrace_figure(result), width="stretch")
+        st.plotly_chart(_cached_alltrace_figure(result), width="stretch")
     with boundary_column:
         st.markdown("#### 总体电导统计")
         boundary_cols = st.columns(2)
@@ -172,7 +257,7 @@ def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
     )
     conductance_column, stats_column = st.columns([1.65, 1.0])
     with conductance_column:
-        st.plotly_chart(cluster_conductance_figure(result, cluster_id), width="stretch")
+        st.plotly_chart(_cached_cluster_conductance_figure(result, cluster_id), width="stretch")
     with stats_column:
         st.markdown("#### 电导峰统计")
         stat_cols = st.columns(2)
@@ -182,11 +267,11 @@ def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
         stat_cols[1].metric("轨迹数量", f"{stats['count']:,}")
     left, right = st.columns(2)
     with left:
-        st.plotly_chart(cluster_traces_figure(result, cluster_id, max_traces=max_display), width="stretch")
+        st.plotly_chart(_cached_cluster_traces_figure(result, cluster_id, max_display), width="stretch")
     with right:
-        st.plotly_chart(cluster_heatmap_figure(result, cluster_id), width="stretch")
-    representative = representative_figure(result, cluster_id)
-    representative_heatmap = representative_heatmap_figure(result, cluster_id)
+        st.plotly_chart(_cached_cluster_heatmap_figure(result, cluster_id), width="stretch")
+    representative = _cached_representative_figure(result, cluster_id)
+    representative_heatmap = _cached_representative_heatmap_figure(result, cluster_id)
     if representative is not None and representative_heatmap is not None:
         demo_left, demo_right = st.columns(2)
         with demo_left:
@@ -203,28 +288,43 @@ def _show_length_stats(result: AnalysisResult) -> None:
         hide_index=True,
         width="stretch",
     )
-    cluster_id = st.selectbox(
-        "选择 Cluster 查看长度分布",
-        options=list(range(3)),
-        format_func=lambda value: f"Cluster {value + 1}",
-        key="length_stats_selector",
-    )
-    st.plotly_chart(length_histogram_figure(result, cluster_id), width="stretch")
+    st.markdown("#### 各 Cluster 平台长度分布")
+    for cluster_id in range(3):
+        st.plotly_chart(_cached_length_histogram_figure(result, cluster_id), width="stretch")
 
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("下载结果")
     download_cols = st.columns(2)
-    download_cols[0].download_button("下载聚类结果 CSV", _cluster_csv(result), "cluster_assignments.csv", "text/csv")
-    download_cols[1].download_button("下载平台长度 CSV", _trace_length_csv(result), "trace_lengths.csv", "text/csv")
+    download_cols[0].download_button("下载聚类结果 CSV", _cached_cluster_csv(result), "cluster_assignments.csv", "text/csv")
+    download_cols[1].download_button("下载平台长度 CSV", _cached_trace_length_csv(result), "trace_lengths.csv", "text/csv")
 
 
-def _show_results(result: AnalysisResult, max_display: int) -> None:
-    st.sidebar.subheader("分析模块")
+def _show_results(result: AnalysisResult) -> None:
+    st.sidebar.markdown("### DITP-Analysis")
+    st.sidebar.caption(f"当前文件：{st.session_state.get('filename', '未命名')}")
+    st.sidebar.markdown("#### 分析导航")
     section = st.sidebar.radio(
         "选择要查看的内容",
         ["总体聚类概览", "Cluster 统计", "平台长度统计"],
         key="analysis_section",
+        label_visibility="collapsed",
     )
+    max_display = st.sidebar.slider(
+        f"每个 Cluster 最多展示的轨迹数（文件共 {len(result.traces):,} 条）",
+        min_value=1,
+        max_value=len(result.traces),
+        value=min(200, len(result.traces)),
+        step=1,
+        key="max_display",
+    )
+    if st.sidebar.button("重新上传数据", use_container_width=True):
+        st.session_state.pop("analysis", None)
+        st.session_state.pop("filename", None)
+        st.session_state.pop("analysis_section", None)
+        st.session_state.pop("max_display", None)
+        st.session_state.pop("boundary_editor", None)
+        st.session_state.pop("cluster_stats_selector", None)
+        st.rerun()
     if section == "总体聚类概览":
         _show_overview(result, max_display)
     elif section == "Cluster 统计":
@@ -233,7 +333,7 @@ def _show_results(result: AnalysisResult, max_display: int) -> None:
         _show_length_stats(result)
 
 
-def main() -> None:
+def _show_upload_page() -> None:
     st.title("DITP-Analysis")
     st.write("SPM 轨迹聚类与平台长度分析")
     st.info("数据仅在本次应用会话中处理，请勿上传不具备公开处理权限的敏感数据。")
@@ -243,22 +343,23 @@ def main() -> None:
             try:
                 st.session_state.analysis = analyze_bytes(upload.getvalue(), upload.name)
                 st.session_state.filename = upload.name
+                st.session_state.pop("analysis_section", None)
+                st.session_state.pop("max_display", None)
+                st.rerun()
             except Exception as exc:
                 st.error(f"分析失败：{exc}")
                 st.session_state.pop("analysis", None)
 
+    st.markdown("上传数据后点击“开始分析”。")
+
+
+def main() -> None:
     result = st.session_state.get("analysis")
-    if result is not None:
-        max_display = st.slider(
-            f"每个 Cluster 最多展示的轨迹数（文件共 {len(result.traces):,} 条）",
-            min_value=1,
-            max_value=len(result.traces),
-            value=min(200, len(result.traces)),
-            step=1,
-        )
-        _show_results(result, max_display)
-    else:
-        st.markdown("上传数据后点击“开始分析”。")
+    if result is None:
+        _show_upload_page()
+        return
+
+    _show_results(result)
 
 
 if __name__ == "__main__":
