@@ -41,8 +41,12 @@ st.markdown(
         --ditp-accent: #A33A4A;
         --ditp-bg: #F3F6F5;
     }
-    html, body, [class*="st-"] {
+    html, body, .stApp {
         font-family: Inter, "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+    [data-testid="stIconMaterial"],
+    .material-symbols-rounded {
+        font-family: "Material Symbols Rounded" !important;
     }
     .stApp {
         background: var(--ditp-bg);
