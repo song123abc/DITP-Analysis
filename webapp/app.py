@@ -394,8 +394,6 @@ def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
         stat_cols[1].metric("轨迹数量", f"{stats['count']:,}")
     left, right = st.columns(2)
     with left:
-        plotted_count = min(int(max_display), int(stats["count"]))
-        st.caption(f"轨迹曲线：实际绘制 {plotted_count:,} / {int(stats['count']):,} 条")
         st.plotly_chart(_cached_cluster_traces_figure(result, cluster_id, max_display), width="stretch")
     with right:
         st.plotly_chart(_cached_cluster_heatmap_figure(result, cluster_id), width="stretch")

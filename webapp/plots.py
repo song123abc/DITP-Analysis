@@ -94,13 +94,14 @@ def cluster_overview_figure(result: AnalysisResult) -> go.Figure:
 def cluster_traces_figure(result: AnalysisResult, cluster_id: int, max_traces: int = 100) -> go.Figure:
     fig = go.Figure()
     indices = np.flatnonzero(result.labels == cluster_id)
+    total_count = len(indices)
     if len(indices) > max_traces:
         indices = indices[np.linspace(0, len(indices) - 1, max_traces).astype(int)]
     for index in indices:
         x, y = result.traces[int(index)]
         fig.add_trace(go.Scattergl(x=x, y=y, mode="lines", line={"color": cluster_color(cluster_id), "width": 0.7}, opacity=0.16, showlegend=False))
     fig.add_hline(y=np.log10(0.1), line_dash="dot", line_color="#64748B", annotation_text="0.1 G0")
-    fig.update_layout(title=f"Cluster {cluster_id + 1} 轨迹", xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
+    fig.update_layout(title=f"Cluster {cluster_id + 1} 轨迹（实际绘制 {len(indices):,} / {total_count:,} 条）", xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
     return fig
 
 
@@ -262,7 +263,7 @@ def _log_count_heatmap(hist: np.ndarray, x_edges: np.ndarray, y_edges: np.ndarra
         colorscale=HEATMAP_COLORS,
         zmin=0.0,
         zmax=robust_max,
-        colorbar={"title": "log(1+计数)"},
+        colorbar={"title": "log(1+count)"},
         hovertemplate="位移 %{x:.3f} nm<br>电导 %{y:.3f}<br>计数 %{customdata:.0f}<extra></extra>",
     ))
     fig.update_layout(title=title, xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
