@@ -325,14 +325,14 @@ def _cached_trace_length_csv(result: AnalysisResult) -> bytes:
 
 def _show_overview(result: AnalysisResult, max_display: int) -> None:
     boundary = result.boundary
-    st.subheader("AllTrace 总体概览")
+    st.subheader("总体概览")
     overall_traces, overall_heatmap = st.columns(2)
     with overall_traces:
         st.plotly_chart(_cached_alltrace_traces_figure(result, max_display), width="stretch")
     with overall_heatmap:
         st.plotly_chart(_cached_alltrace_heatmap_figure(result), width="stretch")
 
-    st.markdown("#### AllTrace 一维电导与平台-噪音边界")
+    st.markdown("#### 一维电导与平台-噪音边界")
     conductance_column, boundary_column = st.columns([1.7, 1.0])
     with conductance_column:
         st.plotly_chart(_cached_alltrace_figure(result), width="stretch")

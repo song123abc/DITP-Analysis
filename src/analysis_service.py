@@ -194,7 +194,7 @@ def detect_alltrace_boundary(traces: Sequence[Trace]) -> Dict[str, float]:
     else:
         background_index = int(np.argmax(np.where(centers < centers[platform_index], projection, -1)))
     if background_index >= platform_index:
-        raise ValueError("无法在 AllTrace 电导分布中找到平台峰左侧的背景峰和低谷。")
+        raise ValueError("无法在总体电导分布中找到平台峰左侧的背景峰和低谷。")
 
     valley_index = background_index + int(
         np.argmin(projection[background_index : platform_index + 1])

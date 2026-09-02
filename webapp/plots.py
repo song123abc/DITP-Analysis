@@ -43,11 +43,11 @@ def alltrace_figure(result: AnalysisResult) -> go.Figure:
     boundary = result.boundary
     smoothed = _smooth_counts(projection)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=centers, y=smoothed, mode="lines", name="AllTrace", line={"color": "#334155", "width": 2}, fill="tozeroy", fillcolor="rgba(51,65,85,0.12)"))
+    fig.add_trace(go.Scatter(x=centers, y=smoothed, mode="lines", name="总体电导计数", line={"color": "#334155", "width": 2}, fill="tozeroy", fillcolor="rgba(51,65,85,0.12)"))
     fig.add_vline(x=boundary["platform_peak_log_g_g0"], line_dash="dot", line_color="#2563EB", annotation_text="平台峰")
     fig.add_vline(x=boundary["background_peak_log_g_g0"], line_dash="dot", line_color="#64748B", annotation_text="背景峰")
     fig.add_vline(x=boundary["boundary_log_g_g0"], line_dash="dash", line_color="#DC2626", annotation_text=f"边界 {boundary['boundary_log_g_g0']:.3f}")
-    fig.update_layout(title="AllTrace 一维电导分布", xaxis_title="log10(G/G0)", yaxis_title="计数", height=500, template="plotly_white")
+    fig.update_layout(title="一维电导分布", xaxis_title="log10(G/G0)", yaxis_title="计数", height=500, template="plotly_white")
     return fig
 
 
@@ -62,7 +62,7 @@ def alltrace_traces_figure(result: AnalysisResult, max_traces: int = 500) -> go.
         fig.add_trace(go.Scattergl(x=x, y=y, mode="lines", line={"color": "#64748B", "width": 0.65}, opacity=0.10, showlegend=False))
     fig.add_hline(y=np.log10(0.1), line_dash="dot", line_color="#64748B", annotation_text="0.1 G0")
     fig.add_hline(y=result.boundary["boundary_log_g_g0"], line_dash="dash", line_color="#DC2626", annotation_text="平台-噪音边界")
-    fig.update_layout(title=f"AllTrace 总体轨迹（展示 {len(indices):,}/{len(result.traces):,}）", xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
+    fig.update_layout(title=f"总体轨迹（展示 {len(indices):,}/{len(result.traces):,}）", xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
     return fig
 
 
@@ -74,7 +74,7 @@ def alltrace_heatmap_figure(result: AnalysisResult) -> go.Figure:
     for x, y in result.traces:
         mask = np.isfinite(x) & np.isfinite(y) & (x >= -0.3) & (x <= 2) & (y >= -7) & (y <= 1)
         hist += np.histogram2d(x[mask], y[mask], bins=[x_edges, y_edges])[0]
-    fig = _log_count_heatmap(hist, x_edges, y_edges, "AllTrace 位移-电导二维直方图")
+    fig = _log_count_heatmap(hist, x_edges, y_edges, "位移-电导二维直方图")
     fig.update_xaxes(range=[-0.3, 2.0])
     fig.update_yaxes(range=[-7.0, 1.0])
     return fig
