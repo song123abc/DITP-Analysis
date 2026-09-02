@@ -122,11 +122,9 @@ def cluster_conductance_figure(result: AnalysisResult, cluster_id: int) -> go.Fi
     color = cluster_color(cluster_id)
     fig.add_trace(go.Scatter(x=centers, y=smoothed, mode="lines", name="电导计数", line={"color": color, "width": 1.8}, fill="tozeroy", fillcolor=_rgba(color, 0.16)))
     if np.isfinite(mu) and np.isfinite(sigma) and sigma > 0 and np.isfinite(amplitude):
-        fit_x = np.linspace(
-            float(result.boundary["boundary_log_g_g0"]),
-            float(np.log10(0.1)),
-            300,
-        )
+        # The parameters are fitted only inside the platform interval, while
+        # the fitted function is displayed across the full conductance axis.
+        fit_x = np.linspace(float(centers[0]), float(centers[-1]), 500)
         fit_y = amplitude * np.exp(-0.5 * ((fit_x - mu) / sigma) ** 2)
         fig.add_trace(go.Scatter(x=fit_x, y=fit_y, mode="lines", name="高斯拟合", line={"color": "#111827", "width": 2.0}))
     if np.isfinite(mu):
