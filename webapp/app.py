@@ -97,6 +97,20 @@ st.markdown(
         border: 1px dashed #8CA6A1;
         border-radius: 6px;
         min-height: 132px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.7rem;
+        text-align: center;
+    }
+    [data-testid="stFileUploaderDropzone"] > div,
+    [data-testid="stFileUploaderDropzoneInstructions"] {
+        align-items: center;
+        text-align: center;
+    }
+    [data-testid="stFileUploaderDropzone"] button {
+        margin-left: auto;
+        margin-right: auto;
     }
     [data-testid="stExpander"] {
         background: rgba(255,255,255,0.62);
@@ -470,8 +484,13 @@ def _show_upload_page() -> None:
                 type=["csv", "xlsx", "gz", "zip"],
             )
             with st.expander("分析参数", expanded=True):
-                k_column, x_column, y_column = st.columns([0.7, 1.4, 1.4])
+                k_column, x_column, y_column = st.columns(
+                    [0.8, 1.35, 1.55],
+                    gap="medium",
+                    border=True,
+                )
                 with k_column:
+                    st.markdown("**聚类设置**")
                     n_clusters = st.number_input(
                         "聚类数量 K",
                         min_value=2,
