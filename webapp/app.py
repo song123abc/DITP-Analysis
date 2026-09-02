@@ -57,6 +57,16 @@ st.markdown(
         padding-top: 2rem;
         padding-bottom: 4rem;
     }
+    [data-testid="stHeader"] {
+        background: transparent;
+        box-shadow: none;
+    }
+    [data-testid="stStatusWidget"],
+    [data-testid="stToolbarActions"],
+    [data-testid="stAppDeployButton"],
+    [data-testid="stMainMenu"] {
+        display: none !important;
+    }
     h1, h2, h3, h4 {
         color: var(--ditp-ink);
         letter-spacing: 0;
