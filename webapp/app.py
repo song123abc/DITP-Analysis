@@ -100,7 +100,7 @@ st.markdown(
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 0.7rem;
+        gap: 0.2rem;
         text-align: center;
     }
     [data-testid="stFileUploaderDropzone"] > div,
@@ -111,6 +111,10 @@ st.markdown(
     [data-testid="stFileUploaderDropzone"] button {
         margin-left: auto;
         margin-right: auto;
+        transform: translateY(0.7rem);
+    }
+    [data-testid="stFileUploader"] button[aria-label="Add files"] {
+        display: none;
     }
     [data-testid="stExpander"] {
         background: rgba(255,255,255,0.62);
@@ -480,7 +484,7 @@ def _show_upload_page() -> None:
         st.caption("上传数据只在当前会话中处理，不长期保存。")
         with st.form("analysis_form"):
             upload = st.file_uploader(
-                "上传无表头 CSV、XLSX 或 ZIP 压缩文件（相邻两列为一条轨迹的 x、y），推荐上传 ZIP 压缩文件。",
+                "上传无表头 CSV、XLSX、CSV.GZ 或 ZIP 压缩文件（相邻两列为一条轨迹的 x、y），推荐上传 ZIP 压缩文件。",
                 type=["csv", "xlsx", "gz", "zip"],
             )
             with st.expander("分析参数", expanded=True):
