@@ -6,7 +6,13 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 
-from src.analysis_service import analyze_traces, calculate_lengths, detect_alltrace_boundary, parse_traces
+from src.analysis_service import (
+    analyze_traces,
+    calculate_lengths,
+    detect_alltrace_boundary,
+    parse_traces,
+    recalculate_boundary_outputs,
+)
 
 
 class AnalysisServiceTests(unittest.TestCase):
@@ -29,6 +35,10 @@ class AnalysisServiceTests(unittest.TestCase):
         zip_traces, _ = parse_traces(zip_buffer.getvalue(), "trace.zip")
         self.assertEqual(len(gzip_traces), 1)
         self.assertEqual(len(zip_traces), 1)
+
+    def test_legacy_xls_is_not_supported(self):
+        with self.assertRaisesRegex(ValueError, "仅支持 CSV、XLSX"):
+            parse_traces(b"not-an-xls-workbook", "trace.xls")
 
     def test_alltrace_valley_is_between_background_and_platform(self):
         traces = []
@@ -69,6 +79,31 @@ class AnalysisServiceTests(unittest.TestCase):
         self.assertEqual(sum(item["count"] for item in result.cluster_stats), 12)
         self.assertGreater(result.cluster_stats[0]["peak_mean"], result.cluster_stats[1]["peak_mean"])
         self.assertGreater(result.cluster_stats[1]["peak_mean"], result.cluster_stats[2]["peak_mean"])
+
+    def test_analysis_supports_dynamic_k_and_roi(self):
+        traces = []
+        for cluster_peak in (-2.5, -3.0, -3.5, -4.0):
+            for replicate in range(4):
+                x = np.linspace(-0.1, 1.2, 90)
+                y = np.full_like(x, cluster_peak + replicate * 0.002)
+                y[:8] = 0.0
+                y[-10:] = -6.0
+                traces.append((x, y))
+        result = analyze_traces(
+            traces,
+            n_clusters=4,
+            roi_x_range=(0.0, 1.0),
+            roi_y_range=(-4.5, -2.0),
+        )
+        self.assertEqual(result.n_clusters, 4)
+        self.assertEqual(result.roi_x_range, (0.0, 1.0))
+        self.assertEqual(len(result.cluster_stats), 4)
+        self.assertEqual(set(result.lengths), {0, 1, 2, 3})
+
+        updated = recalculate_boundary_outputs(result, -4.6)
+        self.assertEqual(updated.n_clusters, 4)
+        self.assertAlmostEqual(updated.boundary["boundary_log_g_g0"], -4.6)
+        self.assertEqual(len(updated.cluster_stats), 4)
 
 
 if __name__ == "__main__":

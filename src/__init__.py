@@ -7,6 +7,7 @@ from .analysis_service import (
     calculate_lengths,
     detect_alltrace_boundary,
     parse_traces,
+    recalculate_boundary_outputs,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "calculate_lengths",
     "detect_alltrace_boundary",
     "parse_traces",
+    "recalculate_boundary_outputs",
 ]

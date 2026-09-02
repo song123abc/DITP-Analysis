@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import io
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.analysis_service import AnalysisResult, analyze_bytes, calculate_lengths
+from src.analysis_service import AnalysisResult, analyze_bytes, recalculate_boundary_outputs
 from webapp.plots import (
     alltrace_figure,
     alltrace_heatmap_figure,
@@ -26,16 +24,96 @@ from webapp.plots import (
     length_histogram_figure,
     representative_figure,
     representative_heatmap_figure,
+    cluster_color,
 )
 
 
-st.set_page_config(page_title="DITP-Analysis", page_icon="📈", layout="wide")
+st.set_page_config(page_title="DITP-Analysis", page_icon=":material/analytics:", layout="wide")
 
 st.markdown(
     """
     <style>
+    :root {
+        --ditp-ink: #172321;
+        --ditp-muted: #60706D;
+        --ditp-line: #D7E0DE;
+        --ditp-primary: #116B66;
+        --ditp-accent: #A33A4A;
+        --ditp-bg: #F3F6F5;
+    }
+    html, body, [class*="st-"] {
+        font-family: Inter, "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+    .stApp {
+        background: var(--ditp-bg);
+        color: var(--ditp-ink);
+    }
+    [data-testid="stMainBlockContainer"] {
+        max-width: 1160px;
+        padding-top: 2rem;
+        padding-bottom: 4rem;
+    }
+    h1, h2, h3, h4 {
+        color: var(--ditp-ink);
+        letter-spacing: 0;
+    }
+    h1 { font-size: 2.35rem !important; line-height: 1.12 !important; }
+    h2 { font-size: 1.55rem !important; }
+    h3 { font-size: 1.18rem !important; }
+    .ditp-hero {
+        padding: 1.1rem 0 1.3rem 0;
+        border-bottom: 1px solid var(--ditp-line);
+        margin-bottom: 1.4rem;
+    }
+    .ditp-eyebrow {
+        color: var(--ditp-primary);
+        font-size: 0.78rem;
+        font-weight: 750;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.4rem;
+    }
+    .ditp-hero-title {
+        color: var(--ditp-ink);
+        font-size: 2.45rem;
+        font-weight: 780;
+        line-height: 1.1;
+        letter-spacing: 0;
+        margin: 0;
+    }
+    .ditp-hero-copy {
+        color: var(--ditp-muted);
+        font-size: 1rem;
+        line-height: 1.7;
+        margin: 0.7rem 0 0 0;
+        max-width: 680px;
+    }
+    [data-testid="stFileUploaderDropzone"] {
+        background: #FFFFFF;
+        border: 1px dashed #8CA6A1;
+        border-radius: 6px;
+        min-height: 132px;
+    }
+    [data-testid="stExpander"] {
+        background: rgba(255,255,255,0.62);
+        border: 1px solid var(--ditp-line);
+        border-radius: 6px;
+    }
+    .stButton > button[kind="primary"],
+    [data-testid="stFormSubmitButton"] > button {
+        background: var(--ditp-primary);
+        border-color: var(--ditp-primary);
+        border-radius: 5px;
+        min-height: 2.7rem;
+        font-weight: 700;
+    }
+    .stButton > button[kind="primary"]:hover,
+    [data-testid="stFormSubmitButton"] > button:hover {
+        background: #0A5753;
+        border-color: #0A5753;
+    }
     .ditp-section-divider {
-        border-top: 1px solid #CBD5E1;
+        border-top: 1px solid var(--ditp-line);
         margin: 2.1rem 0 1.25rem 0;
     }
     .ditp-cluster-heading {
@@ -44,24 +122,21 @@ st.markdown(
         padding: 0.65rem 0.85rem;
         margin: 1.25rem 0 0.35rem 0;
         font-weight: 700;
-        color: #1E293B;
+        color: var(--ditp-ink);
     }
-    .ditp-cluster-1 { background: #FFF4E5; border-left-color: #B45309; }
-    .ditp-cluster-2 { background: #E8F5F2; border-left-color: #0F766E; }
-    .ditp-cluster-3 { background: #EAF1FF; border-left-color: #2563EB; }
     .ditp-sidebar-brand {
-        color: #0F172A;
+        color: var(--ditp-ink);
         font-size: 1.45rem;
         font-weight: 800;
         line-height: 1.2;
         margin: 0.15rem 0 0.8rem 0;
     }
     [data-testid="stSidebar"] {
-        background: #F8FAFC;
-        border-right: 1px solid #E2E8F0;
+        background: #EAF0EE;
+        border-right: 1px solid var(--ditp-line);
     }
     [data-testid="stSidebar"] h3 {
-        color: #0F172A;
+        color: var(--ditp-ink);
         margin-bottom: 0.25rem;
     }
     [data-testid="stSidebar"] [role="radiogroup"] {
@@ -69,19 +144,27 @@ st.markdown(
     }
     [data-testid="stSidebar"] [role="radiogroup"] label {
         border: 1px solid transparent;
-        border-radius: 6px;
+        border-radius: 5px;
         padding: 0.45rem 0.55rem;
         transition: background 120ms ease, border-color 120ms ease;
     }
     [data-testid="stSidebar"] [role="radiogroup"] label:hover {
-        background: #E2E8F0;
-        border-color: #CBD5E1;
+        background: #DDE8E5;
+        border-color: #B9CBC7;
     }
     [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
-        background: #E0F2F1;
-        border-color: #5EEAD4;
-        color: #115E59;
+        background: #D3E7E3;
+        border-color: #6FA6A0;
+        color: #0B5854;
         font-weight: 650;
+    }
+    [data-testid="stMetricValue"] {
+        color: var(--ditp-ink);
+        font-size: 1.65rem;
+    }
+    @media (max-width: 760px) {
+        [data-testid="stMainBlockContainer"] { padding-top: 1.2rem; }
+        .ditp-hero-title { font-size: 2rem; }
     }
     </style>
     """,
@@ -91,7 +174,7 @@ st.markdown(
 
 def _length_rows(result: AnalysisResult) -> pd.DataFrame:
     rows = []
-    for cluster_id in range(3):
+    for cluster_id in range(result.n_clusters):
         values = np.asarray([item["length_nm"] for item in result.lengths[cluster_id]], dtype=float)
         rejected = sum(result.rejection_counts[cluster_id].values())
         rows.append(
@@ -223,7 +306,7 @@ def _show_overview(result: AnalysisResult, max_display: int) -> None:
         boundary_cols[1].metric("背景峰", f"{boundary['background_peak_log_g_g0']:.3f}")
         boundary_cols[0].metric("平台-噪音边界", f"{boundary['boundary_log_g_g0']:.3f}")
         boundary_cols[1].metric("轨迹数量", f"{len(result.traces):,}")
-        st.caption("自动边界来自背景峰与平台峰之间的平台侧低谷。修改后只重算平台长度。")
+        st.caption("自动边界来自背景峰与平台峰之间的平台侧低谷。修改后重算电导峰统计和平台长度。")
         selected_boundary = st.number_input(
             "边界 log10(G/G0)",
             min_value=-6.9,
@@ -234,9 +317,10 @@ def _show_overview(result: AnalysisResult, max_display: int) -> None:
             key="boundary_editor",
         )
         if st.button("按新边界重算平台长度", type="secondary"):
-            lengths, rejected = calculate_lengths(result.traces, result.labels, float(selected_boundary))
-            updated_boundary = {**boundary, "boundary_log_g_g0": float(selected_boundary), "manual_override": 1.0}
-            st.session_state.analysis = replace(result, boundary=updated_boundary, lengths=lengths, rejection_counts=rejected)
+            st.session_state.analysis = recalculate_boundary_outputs(
+                result,
+                float(selected_boundary),
+            )
             st.rerun()
 
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
@@ -251,20 +335,22 @@ def _show_overview(result: AnalysisResult, max_display: int) -> None:
         ),
         hide_index=True,
         width="stretch",
-        height=145,
+        height=min(420, 55 + 35 * result.n_clusters),
     )
 
 def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
     st.subheader("Cluster 统计")
     cluster_id = st.selectbox(
         "选择 Cluster",
-        options=list(range(3)),
+        options=list(range(result.n_clusters)),
         format_func=lambda value: f"Cluster {value + 1}",
         key="cluster_stats_selector",
     )
     stats = result.cluster_stats[cluster_id]
+    color = cluster_color(cluster_id)
     st.markdown(
-        f'<div class="ditp-cluster-heading ditp-cluster-{cluster_id + 1}">'
+        f'<div class="ditp-cluster-heading" style="border-left-color:{color};'
+        f'background:{_hex_to_rgba(color, 0.10)}">'
         f'Cluster {cluster_id + 1} · {stats["count"]:,} 条轨迹</div>',
         unsafe_allow_html=True,
     )
@@ -303,10 +389,17 @@ def _show_length_stats(result: AnalysisResult) -> None:
         width="stretch",
     )
     st.markdown("#### 各 Cluster 平台长度分布")
-    length_columns = st.columns(3)
-    for cluster_id, column in enumerate(length_columns):
-        with column:
-            st.plotly_chart(_cached_length_histogram_figure(result, cluster_id), width="stretch")
+    for row_start in range(0, result.n_clusters, 2):
+        length_columns = st.columns(2)
+        for column_offset, column in enumerate(length_columns):
+            cluster_id = row_start + column_offset
+            if cluster_id >= result.n_clusters:
+                continue
+            with column:
+                st.plotly_chart(
+                    _cached_length_histogram_figure(result, cluster_id),
+                    width="stretch",
+                )
 
     st.markdown('<div class="ditp-section-divider"></div>', unsafe_allow_html=True)
     st.subheader("下载结果")
@@ -318,6 +411,10 @@ def _show_length_stats(result: AnalysisResult) -> None:
 def _show_results(result: AnalysisResult) -> None:
     st.sidebar.markdown('<div class="ditp-sidebar-brand">DITP-Analysis</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"当前文件：{st.session_state.get('filename', '未命名')}")
+    st.sidebar.caption(
+        f"K = {result.n_clusters} · x ROI [{result.roi_x_range[0]:g}, {result.roi_x_range[1]:g}] · "
+        f"y ROI [{result.roi_y_range[0]:g}, {result.roi_y_range[1]:g}]"
+    )
     st.sidebar.markdown("#### 分析导航")
     section = st.sidebar.radio(
         "选择要查看的内容",
@@ -333,7 +430,7 @@ def _show_results(result: AnalysisResult) -> None:
         step=1,
         key="max_display",
     )
-    if st.sidebar.button("重新上传数据", use_container_width=True):
+    if st.sidebar.button("重新上传数据", width="stretch"):
         st.session_state.pop("analysis", None)
         st.session_state.pop("filename", None)
         st.session_state.pop("analysis_section", None)
@@ -350,17 +447,61 @@ def _show_results(result: AnalysisResult) -> None:
 
 
 def _show_upload_page() -> None:
-    st.title("DITP-Analysis")
-    st.write("SPM 轨迹聚类与平台长度分析")
-    st.info("数据仅在本次应用会话中处理，请勿上传不具备公开处理权限的敏感数据。")
-    st.caption("推荐优先上传 ZIP 压缩文件。文件较大时，上传速度可能较慢，请耐心等待。")
-    upload = st.file_uploader("上传无表头 CSV、Excel 或压缩文件（相邻两列为一条轨迹的 x、y）", type=["csv", "xlsx", "xls", "gz", "zip"])
-    if upload is not None and st.button("开始分析", type="primary"):
+    _, center, _ = st.columns([1, 5, 1])
+    with center:
+        st.markdown(
+            """
+            <div class="ditp-hero">
+                <div class="ditp-eyebrow">SPM TRACE ANALYSIS</div>
+                <div class="ditp-hero-title">DITP-Analysis</div>
+                <p class="ditp-hero-copy">一次完成平台-噪音边界识别、轨迹聚类和平台长度分析。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.caption("上传数据只在当前会话中处理，不长期保存。")
+        with st.form("analysis_form"):
+            upload = st.file_uploader(
+                "上传无表头 CSV、XLSX 或 ZIP 压缩文件（相邻两列为一条轨迹的 x、y），推荐上传 ZIP 压缩文件。",
+                type=["csv", "xlsx", "gz", "zip"],
+            )
+            with st.expander("分析参数", expanded=True):
+                k_column, x_column, y_column = st.columns([0.7, 1.4, 1.4])
+                with k_column:
+                    n_clusters = st.number_input(
+                        "聚类数量 K",
+                        min_value=2,
+                        max_value=8,
+                        value=3,
+                        step=1,
+                    )
+                with x_column:
+                    st.markdown("**位移 ROI (nm)**")
+                    x_min_column, x_max_column = st.columns(2)
+                    x_min = x_min_column.number_input("下界", value=0.0, step=0.1, key="roi_x_min")
+                    x_max = x_max_column.number_input("上界", value=2.0, step=0.1, key="roi_x_max")
+                with y_column:
+                    st.markdown("**电导 ROI log10(G/G0)**")
+                    y_min_column, y_max_column = st.columns(2)
+                    y_min = y_min_column.number_input("下界", value=-5.0, step=0.1, key="roi_y_min")
+                    y_max = y_max_column.number_input("上界", value=-2.0, step=0.1, key="roi_y_max")
+            submitted = st.form_submit_button("开始分析", type="primary", width="stretch")
+
+    if submitted:
+        if upload is None:
+            st.error("请先选择需要分析的数据文件。")
+            return
         progress = st.progress(0, text="正在读取上传文件…")
         try:
             data = upload.getvalue()
             progress.progress(15, text="文件读取完成，正在解析轨迹…")
-            result = analyze_bytes(data, upload.name)
+            result = analyze_bytes(
+                data,
+                upload.name,
+                n_clusters=int(n_clusters),
+                roi_x_range=(float(x_min), float(x_max)),
+                roi_y_range=(float(y_min), float(y_max)),
+            )
             progress.progress(85, text="轨迹解析完成，正在整理分析结果…")
             st.session_state.analysis = result
             st.session_state.filename = upload.name
@@ -373,7 +514,14 @@ def _show_upload_page() -> None:
             st.error(f"分析失败：{exc}")
             st.session_state.pop("analysis", None)
 
-    st.markdown("上传数据后点击“开始分析”。")
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    value = hex_color.lstrip("#")
+    red, green, blue = (
+        int(value[offset : offset + 2], 16) for offset in (0, 2, 4)
+    )
+    return f"rgba({red},{green},{blue},{alpha})"
 
 
 def main() -> None:

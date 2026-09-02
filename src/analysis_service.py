@@ -30,6 +30,9 @@ class AnalysisResult:
     trace_ids: List[int]
     labels: np.ndarray
     features: np.ndarray
+    n_clusters: int
+    roi_x_range: Tuple[float, float]
+    roi_y_range: Tuple[float, float]
     boundary: Dict[str, float]
     cluster_stats: List[Dict[str, Any]]
     lengths: Dict[int, List[Dict[str, Any]]]
@@ -37,7 +40,7 @@ class AnalysisResult:
 
 
 def parse_traces(data: bytes, filename: str) -> Tuple[List[Trace], List[int]]:
-    """Parse a headerless alternating x/y CSV or Excel workbook.
+    """Parse a headerless alternating x/y CSV or XLSX workbook.
 
     Rows are filtered pairwise so an invalid x value cannot become misaligned
     with a valid y value. The input bytes are not written to disk.
@@ -80,18 +83,18 @@ def _read_upload_frame(data: bytes, filename: str) -> pd.DataFrame:
                 for name in archive.namelist()
                 if not name.endswith("/")
                 and not name.startswith("__MACOSX/")
-                and name.lower().endswith((".csv", ".xlsx", ".xls"))
+                and name.lower().endswith((".csv", ".xlsx"))
             ]
             if len(candidates) != 1:
-                raise ValueError("ZIP 压缩包必须且只能包含一个 CSV、XLSX 或 XLS 数据文件。")
+                raise ValueError("ZIP 压缩包必须且只能包含一个 CSV 或 XLSX 数据文件。")
             member_name = candidates[0]
             return _read_upload_frame(archive.read(member_name), member_name)
 
     if normalized_name.endswith(".csv"):
         return pd.read_csv(BytesIO(data), header=None)
-    if normalized_name.endswith((".xlsx", ".xls")):
+    if normalized_name.endswith(".xlsx"):
         return pd.read_excel(BytesIO(data), header=None)
-    raise ValueError("仅支持 CSV、XLSX、XLS、CSV.GZ 或 ZIP 文件。")
+    raise ValueError("仅支持 CSV、XLSX、CSV.GZ 或 ZIP 文件。")
 
 
 def _histogram_features(
@@ -123,13 +126,18 @@ def _histogram_features(
     return np.asarray(vectors, dtype=float)
 
 
-def _reorder_labels(traces: Sequence[Trace], labels: np.ndarray) -> np.ndarray:
+def _reorder_labels(
+    traces: Sequence[Trace],
+    labels: np.ndarray,
+    n_clusters: int,
+    roi_y_range: Tuple[float, float],
+) -> np.ndarray:
     means: List[float] = []
-    for cluster_id in range(3):
+    for cluster_id in range(n_clusters):
         values: List[np.ndarray] = []
         for index in np.flatnonzero(labels == cluster_id):
             y = traces[int(index)][1]
-            values.append(y[(y >= -5.0) & (y <= -2.0)])
+            values.append(y[(y >= roi_y_range[0]) & (y <= roi_y_range[1])])
         merged = np.concatenate([item for item in values if item.size]) if values else np.array([])
         means.append(float(np.mean(merged)) if merged.size else -np.inf)
     order = np.argsort(means)[::-1]
@@ -202,8 +210,13 @@ def detect_alltrace_boundary(traces: Sequence[Trace]) -> Dict[str, float]:
     }
 
 
-def _fit_peak(y_centers: np.ndarray, counts: np.ndarray) -> Tuple[float, float, float]:
-    mask = (y_centers >= -4.5) & (y_centers <= -2.0)
+def _fit_peak(
+    y_centers: np.ndarray,
+    counts: np.ndarray,
+    fit_range: Tuple[float, float],
+) -> Tuple[float, float, float]:
+    fit_low, fit_high = sorted((float(fit_range[0]), float(fit_range[1])))
+    mask = (y_centers >= fit_low) & (y_centers <= fit_high)
     x = y_centers[mask]
     z = counts[mask]
     if x.size < 3 or float(np.max(z)) <= 0:
@@ -219,7 +232,10 @@ def _fit_peak(y_centers: np.ndarray, counts: np.ndarray) -> Tuple[float, float, 
             x,
             z,
             p0=[initial_mean, 0.3, float(np.max(z))],
-            bounds=([-5.0, 0.01, 0.0], [-2.0, 2.0, np.inf]),
+            bounds=(
+                [fit_low, 0.01, 0.0],
+                [fit_high, max(2.0, fit_high - fit_low), np.inf],
+            ),
             maxfev=5000,
         )
         return float(params[0]), float(abs(params[1])), float(params[2])
@@ -231,15 +247,23 @@ def _fit_peak(y_centers: np.ndarray, counts: np.ndarray) -> Tuple[float, float, 
 
 
 def _cluster_stats(
-    traces: Sequence[Trace], labels: np.ndarray, cluster_id: int
+    traces: Sequence[Trace],
+    labels: np.ndarray,
+    cluster_id: int,
+    roi_y_range: Tuple[float, float],
+    fit_range: Tuple[float, float],
 ) -> Dict[str, Any]:
     selected = [traces[i] for i in np.flatnonzero(labels == cluster_id)]
     _, projection = _aggregate_projection(selected)
     centers = np.linspace(-7.0, 1.0, 301)
     centers = (centers[:-1] + centers[1:]) / 2.0
-    peak, sigma, amplitude = _fit_peak(centers, projection)
+    peak, sigma, amplitude = _fit_peak(centers, projection, fit_range)
     roi_values = np.concatenate(
-        [y[(y >= -5.0) & (y <= -2.0)] for _, y in selected if np.any((y >= -5.0) & (y <= -2.0))]
+        [
+            y[(y >= roi_y_range[0]) & (y <= roi_y_range[1])]
+            for _, y in selected
+            if np.any((y >= roi_y_range[0]) & (y <= roi_y_range[1]))
+        ]
     ) if selected else np.array([])
     return {
         "cluster_id": cluster_id + 1,
@@ -265,8 +289,13 @@ def calculate_lengths(
     if not np.isfinite(boundary_log_g_g0) or boundary_log_g_g0 >= np.log10(start_threshold_g0):
         raise ValueError("平台-噪音边界必须低于起始阈值。")
     start_log = float(np.log10(start_threshold_g0))
-    accepted: Dict[int, List[Dict[str, Any]]] = {0: [], 1: [], 2: []}
-    rejected: Dict[int, Dict[str, int]] = {0: {}, 1: {}, 2: {}}
+    n_clusters = int(np.max(labels)) + 1 if len(labels) else 0
+    accepted: Dict[int, List[Dict[str, Any]]] = {
+        cluster_id: [] for cluster_id in range(n_clusters)
+    }
+    rejected: Dict[int, Dict[str, int]] = {
+        cluster_id: {} for cluster_id in range(n_clusters)
+    }
 
     def reject(cluster_id: int, reason: str) -> None:
         rejected[cluster_id][reason] = rejected[cluster_id].get(reason, 0) + 1
@@ -329,26 +358,118 @@ def calculate_lengths(
     return accepted, rejected
 
 
-def analyze_traces(traces: List[Trace], trace_ids: Optional[List[int]] = None, boundary: Optional[float] = None) -> AnalysisResult:
+def analyze_traces(
+    traces: List[Trace],
+    trace_ids: Optional[List[int]] = None,
+    boundary: Optional[float] = None,
+    n_clusters: int = 3,
+    roi_x_range: Tuple[float, float] = (0.0, 2.0),
+    roi_y_range: Tuple[float, float] = (-5.0, -2.0),
+) -> AnalysisResult:
     """Run the complete clustering and length workflow in memory."""
-    if len(traces) < 3:
-        raise ValueError("至少需要 3 条轨迹。")
+    n_clusters = int(n_clusters)
+    roi_x_range = (float(roi_x_range[0]), float(roi_x_range[1]))
+    roi_y_range = (float(roi_y_range[0]), float(roi_y_range[1]))
+    if n_clusters < 2:
+        raise ValueError("聚类数量 K 必须至少为 2。")
+    if len(traces) < n_clusters:
+        raise ValueError(f"轨迹数量必须不少于聚类数量 K={n_clusters}。")
+    if roi_x_range[0] >= roi_x_range[1]:
+        raise ValueError("位移 ROI 下界必须小于上界。")
+    if roi_y_range[0] >= roi_y_range[1]:
+        raise ValueError("电导 ROI 下界必须小于上界。")
     ids = trace_ids or list(range(1, len(traces) + 1))
-    features = _histogram_features(traces)
+    features = _histogram_features(
+        traces,
+        x_range=roi_x_range,
+        y_range=roi_y_range,
+    )
     if not np.any(np.sum(features, axis=1) > 0):
-        raise ValueError("没有轨迹点落在聚类 ROI（x=0..2, logG=-5..-2）内。")
-    raw_labels = KMeans(n_clusters=3, init="k-means++", n_init=10, random_state=42).fit_predict(features)
-    labels = _reorder_labels(traces, raw_labels)
+        raise ValueError(
+            "没有轨迹点落在当前聚类 ROI "
+            f"（x={roi_x_range[0]:g}..{roi_x_range[1]:g}, "
+            f"logG={roi_y_range[0]:g}..{roi_y_range[1]:g}）内。"
+        )
+    raw_labels = KMeans(
+        n_clusters=n_clusters,
+        init="k-means++",
+        n_init=10,
+        random_state=42,
+    ).fit_predict(features)
+    labels = _reorder_labels(traces, raw_labels, n_clusters, roi_y_range)
     boundary_info = detect_alltrace_boundary(traces) if boundary is None else {
         **detect_alltrace_boundary(traces),
         "boundary_log_g_g0": float(boundary),
     }
     lengths, rejected = calculate_lengths(traces, labels, boundary_info["boundary_log_g_g0"])
-    stats = [_cluster_stats(traces, labels, cluster_id) for cluster_id in range(3)]
-    return AnalysisResult(traces, ids, labels, features, boundary_info, stats, lengths, rejected)
+    fit_range = (float(boundary_info["boundary_log_g_g0"]), float(np.log10(0.1)))
+    stats = [
+        _cluster_stats(traces, labels, cluster_id, roi_y_range, fit_range)
+        for cluster_id in range(n_clusters)
+    ]
+    return AnalysisResult(
+        traces,
+        ids,
+        labels,
+        features,
+        n_clusters,
+        roi_x_range,
+        roi_y_range,
+        boundary_info,
+        stats,
+        lengths,
+        rejected,
+    )
 
 
-def analyze_bytes(data: bytes, filename: str, boundary: Optional[float] = None) -> AnalysisResult:
+def analyze_bytes(
+    data: bytes,
+    filename: str,
+    boundary: Optional[float] = None,
+    n_clusters: int = 3,
+    roi_x_range: Tuple[float, float] = (0.0, 2.0),
+    roi_y_range: Tuple[float, float] = (-5.0, -2.0),
+) -> AnalysisResult:
     """Parse an upload and run analysis without persisting user data."""
     traces, ids = parse_traces(data, filename)
-    return analyze_traces(traces, ids, boundary=boundary)
+    return analyze_traces(
+        traces,
+        ids,
+        boundary=boundary,
+        n_clusters=n_clusters,
+        roi_x_range=roi_x_range,
+        roi_y_range=roi_y_range,
+    )
+
+
+def recalculate_boundary_outputs(
+    result: AnalysisResult,
+    boundary_log_g_g0: float,
+) -> AnalysisResult:
+    """Recompute boundary-dependent peak fits and lengths without clustering."""
+    boundary = float(boundary_log_g_g0)
+    lengths, rejected = calculate_lengths(result.traces, result.labels, boundary)
+    fit_range = (boundary, float(np.log10(0.1)))
+    stats = [
+        _cluster_stats(
+            result.traces,
+            result.labels,
+            cluster_id,
+            result.roi_y_range,
+            fit_range,
+        )
+        for cluster_id in range(result.n_clusters)
+    ]
+    return AnalysisResult(
+        result.traces,
+        result.trace_ids,
+        result.labels,
+        result.features,
+        result.n_clusters,
+        result.roi_x_range,
+        result.roi_y_range,
+        {**result.boundary, "boundary_log_g_g0": boundary, "manual_override": 1.0},
+        stats,
+        lengths,
+        rejected,
+    )

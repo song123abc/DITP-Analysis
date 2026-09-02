@@ -12,14 +12,28 @@ from scipy.stats import norm
 from src.analysis_service import AnalysisResult, Trace
 
 
-COLORS = ["#B45309", "#0F766E", "#2563EB"]
+COLORS = [
+    "#B45309",
+    "#0F766E",
+    "#2563EB",
+    "#9F3A5D",
+    "#6D5AA8",
+    "#2D7D46",
+    "#B0413E",
+    "#476582",
+]
 HEATMAP_COLORS = [
     [0.00, "#FFFFFF"],
-    [0.08, "#C7DCE8"],
-    [0.38, "#6FA3B8"],
-    [0.68, "#F0B35F"],
-    [1.00, "#A83246"],
+    [0.06, "#E8F2F1"],
+    [0.22, "#9CCBC5"],
+    [0.48, "#287F78"],
+    [0.72, "#F0B84D"],
+    [1.00, "#B4233C"],
 ]
+
+
+def cluster_color(cluster_id: int) -> str:
+    return COLORS[cluster_id % len(COLORS)]
 
 
 def alltrace_figure(result: AnalysisResult) -> go.Figure:
@@ -68,11 +82,11 @@ def alltrace_heatmap_figure(result: AnalysisResult) -> go.Figure:
 
 def cluster_overview_figure(result: AnalysisResult) -> go.Figure:
     """Summarize cluster sizes before the detailed per-cluster sections."""
-    labels = [f"Cluster {cluster_id + 1}" for cluster_id in range(3)]
-    counts = [int(result.cluster_stats[cluster_id]["count"]) for cluster_id in range(3)]
-    fractions = [float(result.cluster_stats[cluster_id]["fraction"]) for cluster_id in range(3)]
+    labels = [f"Cluster {cluster_id + 1}" for cluster_id in range(result.n_clusters)]
+    counts = [int(result.cluster_stats[cluster_id]["count"]) for cluster_id in range(result.n_clusters)]
+    fractions = [float(result.cluster_stats[cluster_id]["fraction"]) for cluster_id in range(result.n_clusters)]
     text = [f"{count:,}<br>{fraction:.1%}" for count, fraction in zip(counts, fractions)]
-    fig = go.Figure(go.Bar(x=labels, y=counts, text=text, textposition="outside", marker_color=COLORS, width=0.56, hovertemplate="%{x}<br>轨迹数量 %{y:,}<extra></extra>"))
+    fig = go.Figure(go.Bar(x=labels, y=counts, text=text, textposition="outside", marker_color=[cluster_color(i) for i in range(result.n_clusters)], width=0.56, hovertemplate="%{x}<br>轨迹数量 %{y:,}<extra></extra>"))
     fig.update_layout(title="总体聚类数量与占比", xaxis_title=None, yaxis_title="轨迹数量", height=360, template="plotly_white", showlegend=False, margin={"t": 55, "r": 20, "b": 45, "l": 55})
     return fig
 
@@ -84,7 +98,7 @@ def cluster_traces_figure(result: AnalysisResult, cluster_id: int, max_traces: i
         indices = indices[np.linspace(0, len(indices) - 1, max_traces).astype(int)]
     for index in indices:
         x, y = result.traces[int(index)]
-        fig.add_trace(go.Scattergl(x=x, y=y, mode="lines", line={"color": COLORS[cluster_id], "width": 0.7}, opacity=0.16, showlegend=False))
+        fig.add_trace(go.Scattergl(x=x, y=y, mode="lines", line={"color": cluster_color(cluster_id), "width": 0.7}, opacity=0.16, showlegend=False))
     fig.add_hline(y=np.log10(0.1), line_dash="dot", line_color="#64748B", annotation_text="0.1 G0")
     fig.update_layout(title=f"Cluster {cluster_id + 1} 轨迹", xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
     return fig
@@ -105,15 +119,20 @@ def cluster_conductance_figure(result: AnalysisResult, cluster_id: int) -> go.Fi
     # display, while keeping the Gaussian fit on the aggregate distribution.
     smoothed = _smooth_counts(projection)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=centers, y=smoothed, mode="lines", name="电导计数", line={"color": COLORS[cluster_id], "width": 1.8}, fill="tozeroy", fillcolor=_rgba(COLORS[cluster_id], 0.16)))
+    color = cluster_color(cluster_id)
+    fig.add_trace(go.Scatter(x=centers, y=smoothed, mode="lines", name="电导计数", line={"color": color, "width": 1.8}, fill="tozeroy", fillcolor=_rgba(color, 0.16)))
     if np.isfinite(mu) and np.isfinite(sigma) and sigma > 0 and np.isfinite(amplitude):
-        fit_x = np.linspace(-7.0, 1.0, 400)
+        fit_x = np.linspace(
+            float(result.boundary["boundary_log_g_g0"]),
+            float(np.log10(0.1)),
+            300,
+        )
         fit_y = amplitude * np.exp(-0.5 * ((fit_x - mu) / sigma) ** 2)
         fig.add_trace(go.Scatter(x=fit_x, y=fit_y, mode="lines", name="高斯拟合", line={"color": "#111827", "width": 2.0}))
     if np.isfinite(mu):
         # Keep the peak marker unobtrusive; the exact fitted value is shown in
         # the statistics panel beside the chart.
-        fig.add_vline(x=mu, line_dash="dot", line_color=COLORS[cluster_id])
+        fig.add_vline(x=mu, line_dash="dot", line_color=color)
     fig.update_layout(title=f"Cluster {cluster_id + 1} 一维电导分布与高斯拟合", xaxis_title="log10(G/G0)", yaxis_title="计数", height=350, template="plotly_white", legend={"orientation": "h", "y": 1.08, "x": 0.01})
     return fig
 
@@ -148,7 +167,7 @@ def length_histogram_figure(result: AnalysisResult, cluster_id: int) -> go.Figur
             edges = np.array([left, left + bin_width])
         counts, edges = np.histogram(values_array, bins=edges)
         centers = (edges[:-1] + edges[1:]) / 2.0
-        fig.add_trace(go.Bar(x=centers, y=counts, width=bin_width * 0.96, marker_color=COLORS[cluster_id], opacity=0.84, name="长度计数"))
+        fig.add_trace(go.Bar(x=centers, y=counts, width=bin_width * 0.96, marker_color=cluster_color(cluster_id), opacity=0.84, name="长度计数"))
 
         # Fit the raw accepted lengths, matching the command-line workflow.
         # The fine histogram is only the display layer and must not determine
@@ -191,9 +210,16 @@ def representative_heatmap_figure(result: AnalysisResult, cluster_id: int) -> Op
         return None
     item = candidates[len(candidates) // 2]
     x, y = result.traces[item["trace_index"]]
-    x_edges = np.linspace(0.0, 2.0, 29)
-    y_edges = np.linspace(-5.0, -2.0, 29)
-    mask = np.isfinite(x) & np.isfinite(y) & (x >= 0) & (x <= 2) & (y >= -5) & (y <= -2)
+    x_edges = np.linspace(result.roi_x_range[0], result.roi_x_range[1], 29)
+    y_edges = np.linspace(result.roi_y_range[0], result.roi_y_range[1], 29)
+    mask = (
+        np.isfinite(x)
+        & np.isfinite(y)
+        & (x >= result.roi_x_range[0])
+        & (x <= result.roi_x_range[1])
+        & (y >= result.roi_y_range[0])
+        & (y <= result.roi_y_range[1])
+    )
     hist = np.histogram2d(x[mask], y[mask], bins=[x_edges, y_edges])[0]
     total = float(np.sum(hist))
     feature = np.sqrt(hist / total) if total > 0 else hist
@@ -226,16 +252,20 @@ def _projection(traces: Sequence[Trace]) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _log_count_heatmap(hist: np.ndarray, x_edges: np.ndarray, y_edges: np.ndarray, title: str) -> go.Figure:
-    """Create a full-range heatmap using raw counts on a white background."""
-    max_count = float(np.max(hist))
+    """Create a high-contrast log-count heatmap with robust color clipping."""
+    transformed = np.log1p(hist)
+    positive = transformed[hist > 0]
+    robust_max = float(np.percentile(positive, 99.5)) if positive.size else 1.0
     fig = go.Figure(go.Heatmap(
         x=(x_edges[:-1] + x_edges[1:]) / 2,
         y=(y_edges[:-1] + y_edges[1:]) / 2,
-        z=hist.T,
+        z=transformed.T,
+        customdata=hist.T,
         colorscale=HEATMAP_COLORS,
         zmin=0.0,
-        zmax=max_count if max_count > 0 else 1.0,
-        colorbar={},
+        zmax=robust_max,
+        colorbar={"title": "log(1+计数)"},
+        hovertemplate="位移 %{x:.3f} nm<br>电导 %{y:.3f}<br>计数 %{customdata:.0f}<extra></extra>",
     ))
     fig.update_layout(title=title, xaxis_title="位移 (nm)", yaxis_title="log10(G/G0)", height=470, template="plotly_white")
     return fig
