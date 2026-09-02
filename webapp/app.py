@@ -121,6 +121,11 @@ st.markdown(
         border: 1px solid var(--ditp-line);
         border-radius: 6px;
     }
+    [data-testid="stSelectbox"] label p {
+        color: var(--ditp-primary);
+        font-size: 1rem;
+        font-weight: 750;
+    }
     .stButton > button[kind="primary"],
     [data-testid="stFormSubmitButton"] > button {
         background: var(--ditp-primary);
@@ -363,10 +368,11 @@ def _show_overview(result: AnalysisResult, max_display: int) -> None:
 def _show_cluster_stats(result: AnalysisResult, max_display: int) -> None:
     st.subheader("Cluster 统计")
     cluster_id = st.selectbox(
-        "选择 Cluster",
+        "选择要查看的 Cluster",
         options=list(range(result.n_clusters)),
         format_func=lambda value: f"Cluster {value + 1}",
         key="cluster_stats_selector",
+        width=340,
     )
     stats = result.cluster_stats[cluster_id]
     color = cluster_color(cluster_id)
